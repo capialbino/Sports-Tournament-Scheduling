@@ -58,14 +58,13 @@ array[M, S] of int: matches =
 
 % The Match ID assigned to period p in week w.
 array[P, W] of var M: matches_idx;
- 
-
-% RE-INSERTED: Count of how many times team t plays in period p.
-% We calculate this explicitly to enforce the limit.
-array[P, T] of var W: Cp;
-
 
 % CORE CONSTRAINTS
+% Break week symmetry: fix the first match
+constraint matches_idx[0, 0] = 0;
+constraint symmetry_breaking_constraint(
+  increasing([matches_idx[p, 0] | p in P])
+);
 
 % 1. constraint solution based on round robin generation
 constraint forall(w in W)(
@@ -77,16 +76,20 @@ constraint forall(w in W)(
 % 2. VALIDITY
 constraint alldifferent(matches_idx);
 
-% 3. Each team plays at most twice a week
+% 3. Each team plays at most twice in any period
 constraint forall(p in P)(
     let {
         array[int] of var M: period_matches = 
             array1d([matches_idx[p, w] | w in W]);
         array[int] of var T: teams = 
             array1d([matches[period_matches[i], s] | i in index_set(period_matches), s in S]);
-        array[T] of var 0..2*card(W): counts = array1d(T, [Cp[p, t] | t in T]);
     } in
-    global_cardinality(teams, array1d(T, [t | t in T]), counts)
+    global_cardinality_low_up(
+        teams,                          % The array to count
+        array1d(T, [t | t in T]),      % The values to count (all teams)
+        array1d(T, [0 | t in T]),      % Lower bounds (0 times minimum)
+        array1d(T, [2 | t in T])       % Upper bounds (2 times maximum)
+    )
 );
 
 % search strategy
