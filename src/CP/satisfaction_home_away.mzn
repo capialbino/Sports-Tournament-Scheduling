@@ -68,23 +68,17 @@ var int: imbalance;
 
 
 % CORE CONSTRAINTS
+constraint matches_idx[0, 0] = 0;
 
-% Break week symmetry
-constraint symmetry_breaking_constraint(
-  forall(p in P)(
-    matches_idx[p, 0] = p
-  )
-);
+% 1. VALIDITY
+constraint alldifferent(matches_idx);
 
-% 1. constraint solution based on round robin generation
+% 2. constraint solution based on round robin generation
 constraint forall(w in W)(
   forall(p in P)(
       w * (N div 2) <= matches_idx[p, w] /\ matches_idx[p, w] < (w + 1) * (N div 2)
   )
 );
-
-% 2. VALIDITY
-constraint alldifferent(matches_idx);
 
 % 3. Each team plays at most twice in any period
 constraint forall(p in P)(
