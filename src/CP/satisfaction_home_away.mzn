@@ -112,6 +112,17 @@ constraint forall(s in S)(
 % defining obj function as the entropy of vector counting home-away (Cha)
 constraint imbalance = sum(t in T)(abs(Cha[t, 0] - Cha[t, 1]));
 
+% SYMMETRY BREAKING: Lexicographic ordering between even and odd weeks to avoid rows swapping
+constraint symmetry_breaking_constraint(
+    % Break row symmetry: each period's schedule should be lex-ordered
+    forall(p in 0..card(P) - 2)(
+      lex_less(
+          [matches_idx[p, w] | w in W],
+          [matches_idx[p+1, w] | w in W]
+      )
+    )
+);
+
 % search strategy
 solve :: int_search(
     array1d(matches_idx),
