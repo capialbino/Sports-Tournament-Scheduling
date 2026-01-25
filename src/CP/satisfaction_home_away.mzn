@@ -4,7 +4,7 @@
 % 1. Every team plays every other team exactly once.
 % 2. Every team plays exactly once per week.
 % 3. No team plays more than twice in the same period (time slot).
-% 4. Balanced Home-Away matches among teams
+% 4. Balanced Home-Away matches among teams (optimized)
 
 include "globals.mzn";
 
@@ -29,10 +29,7 @@ set of int: P = 0..N div 2 - 1;
 set of int: M = 0..(N - 1) * (N div 2) - 1;
 % Total number of matches to be played.
 
-set of int: TeamsInSamePeriod = 0..2 * (N - 1) - 1;
-% Helper set for the total number of team slots in a specific period across all weeks.
-
-% DATA GENERATION (CIRCLE METHOD)
+% DATA GENERATION (CIRCLE METHOD) - Generate unordered pairs
 
 array[P, W, S] of int: rb = array3d(P, W, S,
   [ if s == 0 then
@@ -47,11 +44,11 @@ array[P, W, S] of int: rb = array3d(P, W, S,
     | p in P, w in W, s in S
   ]);
 
-% Flatten to list of matches
-array[M, S] of int: matches =
-  array2d(M, S, [
+% Flatten to list of match pairs (unordered)
+array[M, 0..1] of int: match_pairs =
+  array2d(M, 0..1, [
     rb[p, w, s]
-    | w in W, p in P, s in S
+    | w in W, p in P, s in 0..1
   ]);
   
 
@@ -60,8 +57,11 @@ array[M, S] of int: matches =
 % The Match ID assigned to period p in week w.
 array[P, W] of var M: matches_idx;
 
+% Decision variable: which team from the pair is home (0 = first team, 1 = second team)
+array[P, W] of var 0..1: home_is_first;
+
 % Count of how many times team t plays home and away
-array[T, S] of var T: Cha;
+array[T, 0..1] of var T: Cha;
 
 % define objective var
 var int: imbalance;
@@ -86,7 +86,7 @@ constraint forall(p in P)(
         array[int] of var M: period_matches = 
             array1d([matches_idx[p, w] | w in W]);
         array[int] of var T: teams = 
-            array1d([matches[period_matches[i], s] | i in index_set(period_matches), s in S]);
+            array1d([match_pairs[period_matches[i], s] | i in index_set(period_matches), s in 0..1]);
     } in
     global_cardinality_low_up(
         teams,                          % The array to count
@@ -96,23 +96,32 @@ constraint forall(p in P)(
     )
 );
 
-% 4. Channel home/away counts from the actual solution (matches_idx)
-constraint forall(s in S)(
+% 4. Channel home/away counts from the actual solution (matches_idx + home_is_first)
+constraint forall(slot in 0..1)(
     let {
-        % Collect all TEAMS playing in slot s according to the actual match assignments
+        % Collect all TEAMS playing in the given slot (0=home, 1=away)
         array[int] of var T: teams_in_slot = 
-            array1d([matches[matches_idx[p, w], s] | p in P, w in W]);
+            array1d([
+                if (slot == 0) == (home_is_first[p, w] == 0) then
+                    match_pairs[matches_idx[p, w], 0]
+                else
+                    match_pairs[matches_idx[p, w], 1]
+                endif
+                | p in P, w in W
+            ]);
         % The counts for each team
-        array[T] of var 0..card(W)*card(P): counts = 
-            array1d(T, [Cha[t, s] | t in T]);
+        array[T] of var W: counts = 
+            array1d(T, [Cha[t, slot] | t in T]);
     } in
     global_cardinality(teams_in_slot, array1d(T, [t | t in T]), counts)
 );
 
-% defining obj function as the entropy of vector counting home-away (Cha)
+% defining obj function as the sum of absolute differences between home and away counts
 constraint imbalance = sum(t in T)(abs(Cha[t, 0] - Cha[t, 1]));
 
-% SYMMETRY BREAKING: Lexicographic ordering between even and odd weeks to avoid rows swapping
+constraint imbalance >= N;  % at least N is imbalance
+
+% SYMMETRY BREAKING: Lexicographic ordering between periods
 constraint symmetry_breaking_constraint(
     % Break row symmetry: each period's schedule should be lex-ordered
     forall(p in 0..card(P) - 2)(
@@ -125,7 +134,7 @@ constraint symmetry_breaking_constraint(
 
 % search strategy
 solve :: int_search(
-    array1d(matches_idx),
+    array1d(matches_idx) ++ array1d(home_is_first),
     first_fail,      % Choose variable with smallest domain
     indomain_min,    % Try smallest value first
     complete
@@ -140,10 +149,21 @@ output [
     concat([ "Period \(p+1)\t" | p in P ]), 
     "\n    ",  
     concat([
-      "\(matches[matches_idx[p, w], 0]) vs \(matches[matches_idx[p, w], 1]) \t"
+      let {
+        int: m = fix(matches_idx[p, w]),
+        int: home = if fix(home_is_first[p, w]) == 0 then match_pairs[m, 0] else match_pairs[m, 1] endif,
+        int: away = if fix(home_is_first[p, w]) == 0 then match_pairs[m, 1] else match_pairs[m, 0] endif
+      } in
+      "\(home) vs \(away) \t"
       | p in P
     ]),
     "\n\n"  
   ])
   | w in W
-];
+] ++
+["\n\nHome/Away Balance:\n"] ++
+[
+  "Team \(t): Home=\(fix(Cha[t, 0])), Away=\(fix(Cha[t, 1])), Diff=\(abs(fix(Cha[t, 0]) - fix(Cha[t, 1])))\n"
+  | t in T
+] ++
+["\nTotal Imbalance: \(fix(imbalance))\n"];
