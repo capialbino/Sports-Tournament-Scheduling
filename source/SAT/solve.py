@@ -75,7 +75,6 @@ def satisfy(N):
 
     # Create solver
     solver = Solver()
-    solver.set("timeout", 300000)   # set timeout to 300 seconds
 
     # Add core constraints
     add_core_constraints(solver, N, T, S, W, P, M, matches, matches_idx_vars)
@@ -110,7 +109,6 @@ def solve_with_optimization(N):
 
     # Create solver
     solver = Solver()
-    solver.set("timeout", 300000)  # set timeout to 300 seconds
 
     # Decision variables: matches_idx[p][w] using one-hot encoding
     matches_idx_vars = {}

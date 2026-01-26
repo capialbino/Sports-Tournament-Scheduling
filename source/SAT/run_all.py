@@ -2,21 +2,14 @@ import subprocess
 import sys
 import os
 
-
 def main():
     script_name = "./source/SAT/run.py"
     save_dir = "./res/SAT"
 
-    # Ensure results directory exists
     os.makedirs(save_dir, exist_ok=True)
 
-    # Loop through even N from 6 to 20
     for n in range(6, 21, 2):
-        # Mode logic
-        if n <= 12:
-            mode = "both"
-        else:
-            mode = "optimize"
+        mode = "both" if n <= 10 else "satisfy"
 
         print("=" * 60)
         print(f"Running solver for N={n} (mode={mode})")
@@ -36,14 +29,20 @@ def main():
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                timeout=300  # Timeout in seconds
             )
 
             print(result.stdout)
-
             if result.stderr:
                 print("Warnings/Errors:")
                 print(result.stderr)
+
+        except subprocess.TimeoutExpired as te:
+            print(f"TimeoutExpired: Solver took longer than 300s for N={n}")
+            print("Killing solver process.")
+            # You can record this in JSON or elsewhere too
+            print(te)
 
         except subprocess.CalledProcessError as e:
             print(f"Error while running N={n}")
