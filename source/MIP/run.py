@@ -10,19 +10,79 @@ Usage:
 """
 
 import argparse
+import subprocess
 import time as tm
 from pathlib import Path
+import re
+import sys
+import json
 
-from pulp import *
 
 # Import the solver function directly
 from model import *
 
+def parse_solver_output(output, n):
+    """
+    Parse solver stdout and extract:
+    - objective value (TOTAL IMBALANCE)
+    - schedule matrix of shape (n-1) x (n/2)
+      Each entry: [home_team, away_team] (1-indexed)
+    """
+
+    weeks = []
+    current_week = None
+
+    # Regex patterns
+    week_pattern = re.compile(r"^Week\s+\d+:")
+    match_pattern = re.compile(r"Team\s+(\d+)\s+vs\s+Team\s+(\d+)")
+    imbalance_pattern = re.compile(r"TOTAL IMBALANCE:\s*(\d+)")
+
+    for line in output.splitlines():
+        line = line.strip()
+
+        # Detect new week
+        if week_pattern.match(line):
+            if current_week is not None:
+                weeks.append(current_week)
+            current_week = []
+            continue
+
+        # Detect match line(s)
+        matches = match_pattern.findall(line)
+        for home, away in matches:
+            # Convert to 1-based indexing
+            home = int(home) + 1
+            away = int(away) + 1
+            current_week.append([home, away])
+
+    # Append last week
+    if current_week is not None:
+        weeks.append(current_week)
+
+    # Extract objective
+    imbalance = None
+    imbalance_match = imbalance_pattern.search(output)
+    if imbalance_match:
+        imbalance = int(imbalance_match.group(1))
+
+    # Optional sanity check
+    expected_weeks = n - 1
+    expected_matches_per_week = n // 2
+
+    if len(weeks) != expected_weeks:
+        raise ValueError(f"Expected {expected_weeks} weeks, got {len(weeks)}")
+
+    for w in weeks:
+        if len(w) != expected_matches_per_week:
+            raise ValueError(
+                f"Each week must have {expected_matches_per_week} matches, got {len(w)}"
+            )
+
+    return imbalance, weeks
+
 
 def run_scheduler(n, timeout=300):
-    """
-    Run the round-robin solver directly and return result in required format.
-    """
+
     result = {
         "time": timeout,
         "optimal": False,
@@ -33,63 +93,59 @@ def run_scheduler(n, timeout=300):
     start_time = tm.time()
 
     try:
-        prob, matches_idx, home_is_first, match_pairs, Cha, imbalance, teams, weeks, periods = create_schedule(n)
-        print_schedule(prob, matches_idx, home_is_first,
-                       match_pairs, Cha, imbalance,
-                       teams, weeks, periods)
-
-        elapsed_time = int(tm.time() - start_time)  # floor runtime
-        status = LpStatus[prob.status]
-
-        # If no feasible solution
-        if status not in ["Optimal", "Not Solved"]:
-            result["time"] = timeout
-            return result
-
-        obj_value = int(value(imbalance)) if value(imbalance) is not None else None
-
-        # Build solution matrix (periods x weeks)
-        schedule_matrix = []
-        for p in periods:
-            period_row = []
-            for w in weeks:
-                match_id = int(value(matches_idx[p][w]))
-                is_first_home = int(value(home_is_first[p][w]))
-
-                if is_first_home == 1:
-                    home = match_pairs[match_id][0] + 1
-                    away = match_pairs[match_id][1] + 1
-                else:
-                    home = match_pairs[match_id][1] + 1
-                    away = match_pairs[match_id][0] + 1
-
-                period_row.append([home, away])
-            schedule_matrix.append(period_row)
-
-        # Determine optimality
-        is_optimal = (
-            status == "Optimal"
-            and obj_value is not None
-            and obj_value == n
+        process = subprocess.run(
+            [sys.executable, "source/MIP/model.py", str(n)],
+            capture_output=True,
+            text=True,
+            timeout=timeout
         )
 
-        # Apply competition rule:
-        # time = 300  ⇔  optimal = False
-        if not is_optimal:
-            result["time"] = timeout
-        else:
+        elapsed_time = int(tm.time() - start_time)
+
+        if process.returncode != 0:
+            print(f"Warning: Solver failed with return code {process.returncode}")
+            if process.stderr:
+                print("STDERR:", process.stderr[:500])
+            return result  # time already = timeout, optimal=False
+
+        # Print solver output so schedule is visible
+        print(process.stdout)
+
+        imbalance, schedule_matrix = parse_solver_output(process.stdout, n)
+
+        if imbalance is None or not schedule_matrix:
+            print("Failed to extract solution.")
+            return result
+
+        # Transpose to (n/2) x (n-1)
+        schedule_matrix = list(map(list, zip(*schedule_matrix)))
+
+        # Competition optimality rule
+        is_optimal = imbalance and imbalance <= n
+
+        if is_optimal:
             result["time"] = elapsed_time
+        else:
+            result["time"] = timeout  # required rule
 
         result["optimal"] = is_optimal
-        result["obj"] = obj_value
-        result["sol"] = schedule_matrix if obj_value is not None else []
+        result["obj"] = imbalance
+        result["sol"] = schedule_matrix
 
-    except Exception as e:
-        print("Error running solver:", e)
+        if not is_optimal:
+            print(f"Warning: Objective {imbalance} > N={n}, setting optimal=False")
+
+    except subprocess.TimeoutExpired:
+        print(f"Timeout: Solver exceeded {timeout} seconds")
         result["time"] = timeout
         result["optimal"] = False
-        result["obj"] = None
-        result["sol"] = []
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        result["time"] = timeout
+        result["optimal"] = False
 
     return result
 
@@ -164,6 +220,7 @@ The output JSON file will be created at: <outdir>/<n>.json
     # Create the final JSON structure
     # The approach name is derived from the output directory name
     approach_name = "MIP-CBC_MILP"
+
     json_output = {
         approach_name: result
     }

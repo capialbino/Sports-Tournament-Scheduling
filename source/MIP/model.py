@@ -2,28 +2,34 @@
 """
 Round Robin Tournament Scheduler with Home/Away Balance Optimization
 
-This script generates an optimal round-robin tournament schedule that minimizes
-the imbalance in home and away games across all teams.
+This module provides a function to generate an optimal round-robin tournament
+schedule that minimizes the imbalance in home and away games across all teams.
 
-Usage:
-    python round_robin_scheduler.py -n 12
-    python round_robin_scheduler.py --teams 8
+Usage as a module:
+    from round_robin_scheduler import solve_round_robin
+    result = solve_round_robin(n=12)
+
+Usage as a script:
+    python round_robin_scheduler.py 12
 """
 
-import argparse
 import sys
 from pulp import *
 
 
-def create_schedule(n):
+def solve_round_robin(n):
     """
     Create an optimized round-robin schedule for n teams.
 
     Args:
-        n (int): Number of teams (must be even)
+        n (int): Number of teams (must be even and at least 4)
 
     Returns:
-        tuple: (problem status, schedule data, home/away counts, total imbalance)
+        dict: Dictionary containing:
+            - 'status': Optimization status
+            - 'schedule': Dictionary mapping (period, week) to (home, away)
+            - 'imbalance': Total imbalance value
+            - 'home_away_counts': Dictionary mapping team to (home_count, away_count)
     """
     # Validate input
     if n % 2 != 0:
@@ -256,26 +262,18 @@ def create_schedule(n):
     # Solve
     prob.solve(PULP_CBC_CMD(msg=False))
 
-    # Return results
-    return prob, matches_idx, home_is_first, match_pairs, Cha, imbalance, teams, weeks, periods
+    # Extract results
+    result = {
+        'status': LpStatus[prob.status],
+        'schedule': {},
+        'imbalance': None,
+        'home_away_counts': {}
+    }
 
-
-def print_schedule(prob, matches_idx, home_is_first, match_pairs, Cha, imbalance, teams, weeks, periods):
-    """Print the schedule and statistics."""
     if LpStatus[prob.status] == "Optimal" or LpStatus[prob.status] == "Not Solved":
-        print("\n" + "=" * 80)
-        print("TOURNAMENT SCHEDULE")
-        print("=" * 80 + "\n")
-
-        for w in weeks:
-            print(f"Week {w + 1}:")
-            print("-" * 80)
-            print("  ", end="")
-            for p in periods:
-                print(f"Period {p + 1}\t\t", end="")
-            print("\n  ", end="")
-
-            for p in periods:
+        # Extract schedule
+        for p in periods:
+            for w in weeks:
                 match_id = int(value(matches_idx[p][w]))
                 is_first_home = int(value(home_is_first[p][w]))
 
@@ -286,21 +284,101 @@ def print_schedule(prob, matches_idx, home_is_first, match_pairs, Cha, imbalance
                     home_team = match_pairs[match_id][1]
                     away_team = match_pairs[match_id][0]
 
-                print(f"Team {home_team} vs Team {away_team}\t", end="")
-            print("\n")
+                result['schedule'][(p, w)] = (home_team, away_team)
 
-        print("=" * 80)
-        print("HOME/AWAY BALANCE")
-        print("=" * 80)
+        # Extract home/away counts
         for t in teams:
             home_count = int(value(Cha[t][0]))
             away_count = int(value(Cha[t][1]))
-            diff = abs(home_count - away_count)
-            print(f"Team {t:2d}: Home={home_count:2d}, Away={away_count:2d}, Difference={diff}")
+            result['home_away_counts'][t] = (home_count, away_count)
 
-        print("\n" + "=" * 80)
-        print(f"TOTAL IMBALANCE: {int(value(imbalance))}")
-        print("=" * 80 + "\n")
-    else:
-        print(f"\nOptimization Status: {LpStatus[prob.status]}")
+        # Extract imbalance
+        result['imbalance'] = int(value(imbalance))
+
+    return result
+
+
+def print_schedule(result, n):
+    """Print the schedule and statistics in a human-readable format."""
+    if result['status'] not in ["Optimal", "Not Solved"]:
+        print(f"\nOptimization Status: {result['status']}")
         print("Unable to find a solution.\n")
+        return
+
+    weeks = range(n - 1)
+    periods = range(n // 2)
+
+    print("\n" + "=" * 80)
+    print("TOURNAMENT SCHEDULE")
+    print("=" * 80 + "\n")
+
+    for w in weeks:
+        print(f"Week {w + 1}:")
+        print("-" * 80)
+        print("  ", end="")
+        for p in periods:
+            print(f"Period {p + 1}\t\t", end="")
+        print("\n  ", end="")
+
+        for p in periods:
+            home_team, away_team = result['schedule'][(p, w)]
+            print(f"Team {home_team} vs Team {away_team}\t", end="")
+        print("\n")
+
+    print("=" * 80)
+    print("HOME/AWAY BALANCE")
+    print("=" * 80)
+    for t in range(n):
+        home_count, away_count = result['home_away_counts'][t]
+        diff = abs(home_count - away_count)
+        print(f"Team {t:2d}: Home={home_count:2d}, Away={away_count:2d}, Difference={diff}")
+
+    print("\n" + "=" * 80)
+    print(f"TOTAL IMBALANCE: {result['imbalance']}")
+    print("=" * 80 + "\n")
+
+
+def main():
+    """Main function for command-line usage."""
+    if len(sys.argv) != 2:
+        print("Usage: python round_robin_scheduler.py <number_of_teams>")
+        print("Example: python round_robin_scheduler.py 12")
+        sys.exit(1)
+
+    try:
+        n = int(sys.argv[1])
+    except ValueError:
+        print(f"Error: '{sys.argv[1]}' is not a valid integer")
+        sys.exit(1)
+
+    # Validate input
+    if n < 4:
+        print(f"Error: Number of teams must be at least 4 (got {n})")
+        sys.exit(1)
+    if n % 2 != 0:
+        print(f"Error: Number of teams must be even (got {n})")
+        sys.exit(1)
+
+    print(f"\nGenerating schedule for {n} teams...")
+    print(f"Total weeks: {n - 1}")
+    print(f"Matches per week: {n // 2}")
+    print(f"Total matches: {(n - 1) * (n // 2)}")
+    print("\nOptimizing...\n")
+
+    try:
+        # Solve the problem
+        result = solve_round_robin(n)
+
+        # Print the results
+        print_schedule(result, n)
+
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
