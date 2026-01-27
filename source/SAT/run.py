@@ -5,7 +5,7 @@ Sports Scheduling Problem Solver
 This script solves the sports scheduling problem using SAT encoding.
 It supports both decision (satisfy) and optimization modes.
 """
-
+# TODO: handle timeout here when running single instance
 import argparse
 import time
 import sys
