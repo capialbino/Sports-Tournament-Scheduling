@@ -159,6 +159,9 @@ def main():
     parser.add_argument("--outdir", type=str, default="res",
                         help="Directory where JSON file will be saved (default: res)")
 
+    parser.add_argument("--skip_non_solvable", type=bool, default=True,
+                        help="If True, do not execute a model-solver pair at the current N when the same pair produced no solution at N-2.")
+
     args = parser.parse_args()
 
     model_dir = Path(args.dir)
@@ -178,6 +181,19 @@ def main():
     results = {}
 
     # --------------------------------------------------
+    # Load previous N-2 results (if exist)
+    # --------------------------------------------------
+    if args.skip_non_solvable:
+        prev_results = {}
+        prev_N = args.N - 2
+
+        if prev_N > 4:
+            prev_output_path = os.path.join(args.outdir, f"{prev_N}.json")
+            if os.path.exists(prev_output_path):
+                with open(prev_output_path, "r") as f:
+                    prev_results = json.load(f)
+
+    # --------------------------------------------------
     # Run each model
     # --------------------------------------------------
     for mzn_file in mzn_files:
@@ -185,8 +201,29 @@ def main():
 
         for solver in ALLOWED_SOLVERS:
             approach_name = f"{file_name}-{solver}"
-            print(f"Running {approach_name}...")
+            print(f"Processing {approach_name} for N={args.N}...")
 
+            # --------------------------------------------------
+            # Check if previous N-2 had no solution (if true then neither current N would be solved)
+            # --------------------------------------------------
+            if args.skip_non_solvable:
+                if approach_name in prev_results:
+                    prev_sol = prev_results[approach_name].get("sol", [])
+
+                    if prev_sol == []:
+                        print(f"Skipping {approach_name} (no solution at N={prev_N})")
+
+                        results[approach_name] = {
+                            "time": args.timeout,
+                            "optimal": False,
+                            "obj": None,
+                            "sol": []
+                        }
+                        continue
+
+            # --------------------------------------------------
+            # Otherwise run normally
+            # --------------------------------------------------
             runtime, optimal, obj, sol = run_minizinc_model(
                 mzn_file=mzn_file,
                 solver=solver,
