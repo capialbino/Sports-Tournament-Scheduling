@@ -57,13 +57,9 @@ def main():
             end_time = time.time()
             runtime = TIMEOUT
 
-            print(f"\n⏳ Timeout: Solver exceeded {TIMEOUT} seconds for N={n}")
+            print(f"\nTimeout: Solver exceeded {TIMEOUT} seconds for N={n}")
             print("Process terminated.")
             print(f"Recorded runtime: {runtime} seconds\n")
-
-            # Ensure process is killed
-            if te.process:
-                te.process.kill()
 
         except Exception as e:
             print(f"\nError while running N={n}")
