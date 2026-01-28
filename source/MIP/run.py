@@ -1,84 +1,63 @@
-#!/usr/bin/env python3
-"""
-Run script for Round Robin Tournament Scheduler
-
-This script executes the round_robin_scheduler.py script with a timeout
-and formats the output as a JSON file according to the competition format.
-
-Usage:
-    python run.py -n 12 -o results/MIP -t 300
-"""
-
 import argparse
 import subprocess
-import time as tm
-from pathlib import Path
 import re
 import sys
 import json
+import time as tm
+from pathlib import Path
 
 
-# Import the solver function directly
-from model import *
+def parse_solution_matrix(stdout):
+    week_blocks = re.findall(
+        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Total Imbalance:|----------|$)",
+        stdout,
+        re.DOTALL
+    )
 
-def parse_solver_output(output, n):
-    """
-    Parse solver stdout and extract:
-    - objective value (TOTAL IMBALANCE)
-    - schedule matrix of shape (n-1) x (n/2)
-      Each entry: [home_team, away_team] (1-indexed)
-    """
+    if not week_blocks:
+        return None
 
     weeks = []
-    current_week = None
 
-    # Regex patterns
-    week_pattern = re.compile(r"^Week\s+\d+:")
-    match_pattern = re.compile(r"Team\s+(\d+)\s+vs\s+Team\s+(\d+)")
-    imbalance_pattern = re.compile(r"TOTAL IMBALANCE:\s*(\d+)")
+    for block in week_blocks:
+        # Extract matches in format: "Period X: A vs B"
+        period_matches = re.findall(
+            r"Period\s+\d+:\s*(\d+)\s+vs\s+(\d+)",
+            block
+        )
 
-    for line in output.splitlines():
-        line = line.strip()
+        week_matches = [[int(a), int(b)] for a, b in period_matches]
 
-        # Detect new week
-        if week_pattern.match(line):
-            if current_week is not None:
-                weeks.append(current_week)
-            current_week = []
-            continue
+        if week_matches:
+            weeks.append(week_matches)
 
-        # Detect match line(s)
-        matches = match_pattern.findall(line)
-        for home, away in matches:
-            # Convert to 1-based indexing
-            home = int(home) + 1
-            away = int(away) + 1
-            current_week.append([home, away])
+    if not weeks:
+        return None
 
-    # Append last week
-    if current_week is not None:
-        weeks.append(current_week)
+    num_weeks = len(weeks)
+    num_periods = len(weeks[0])
 
-    # Extract objective
-    imbalance = None
-    imbalance_match = imbalance_pattern.search(output)
-    if imbalance_match:
-        imbalance = int(imbalance_match.group(1))
-
-    # Optional sanity check
-    expected_weeks = n - 1
-    expected_matches_per_week = n // 2
-
-    if len(weeks) != expected_weeks:
-        raise ValueError(f"Expected {expected_weeks} weeks, got {len(weeks)}")
-
+    # Ensure all weeks have same number of periods
     for w in weeks:
-        if len(w) != expected_matches_per_week:
-            raise ValueError(
-                f"Each week must have {expected_matches_per_week} matches, got {len(w)}"
-            )
+        if len(w) != num_periods:
+            return None
 
-    return imbalance, weeks
+    # Convert week-major → period-major (same structure as before)
+    matrix = []
+
+    for p in range(num_periods):
+        row = []
+        for w in range(num_weeks):
+            row.append(weeks[w][p])
+        matrix.append(row)
+
+    # Convert team numbering from 0-based to 1-based
+    for p in range(num_periods):
+        for w in range(num_weeks):
+            for t in range(2):
+                matrix[p][w][t] += 1
+
+    return matrix
 
 
 def run_scheduler(n, timeout=300):
@@ -111,14 +90,16 @@ def run_scheduler(n, timeout=300):
         # Print solver output so schedule is visible
         print(process.stdout)
 
-        imbalance, schedule_matrix = parse_solver_output(process.stdout, n)
+        imbalance = None
+        imbalance_match = re.search(r"TOTAL IMBALANCE:\s*(\d+)", process.stdout)
+        if imbalance_match:
+            imbalance = int(imbalance_match.group(1))
+
+        schedule_matrix = parse_solution_matrix(process.stdout)
 
         if imbalance is None or not schedule_matrix:
             print("Failed to extract solution.")
             return result
-
-        # Transpose to (n/2) x (n-1)
-        schedule_matrix = list(map(list, zip(*schedule_matrix)))
 
         # Competition optimality rule
         is_optimal = imbalance and imbalance <= n
@@ -152,7 +133,6 @@ def run_scheduler(n, timeout=300):
 
 
 def main():
-    """Main function to parse arguments and run the scheduler."""
     parser = argparse.ArgumentParser(
         description='Run the round-robin scheduler and output results in JSON format.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -193,8 +173,8 @@ The output JSON file will be created at: <outdir>/<n>.json
     args = parser.parse_args()
 
     # Validate input
-    if args.teams < 4:
-        print(f"Error: Number of teams must be at least 4 (got {args.teams})")
+    if args.teams < 6:
+        print(f"Error: Number of teams must be at least 6 (got {args.teams})")
         sys.exit(1)
     if args.teams % 2 != 0:
         print(f"Error: Number of teams must be even (got {args.teams})")
@@ -218,7 +198,6 @@ The output JSON file will be created at: <outdir>/<n>.json
     result = run_scheduler(args.teams, args.timeout)
 
     # Create the final JSON structure
-    # The approach name is derived from the output directory name
     approach_name = "MIP-CBC_MILP"
 
     json_output = {

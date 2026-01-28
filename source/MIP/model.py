@@ -1,41 +1,12 @@
-#!/usr/bin/env python3
-"""
-Round Robin Tournament Scheduler with Home/Away Balance Optimization
-
-This module provides a function to generate an optimal round-robin tournament
-schedule that minimizes the imbalance in home and away games across all teams.
-
-Usage as a module:
-    from round_robin_scheduler import solve_round_robin
-    result = solve_round_robin(n=12)
-
-Usage as a script:
-    python round_robin_scheduler.py 12
-"""
-
-import sys
 from pulp import *
 
 
-def solve_round_robin(n):
-    """
-    Create an optimized round-robin schedule for n teams.
-
-    Args:
-        n (int): Number of teams (must be even and at least 4)
-
-    Returns:
-        dict: Dictionary containing:
-            - 'status': Optimization status
-            - 'schedule': Dictionary mapping (period, week) to (home, away)
-            - 'imbalance': Total imbalance value
-            - 'home_away_counts': Dictionary mapping team to (home_count, away_count)
-    """
+def optimize(n):
     # Validate input
     if n % 2 != 0:
         raise ValueError("Number of teams must be even")
-    if n < 4:
-        raise ValueError("Number of teams must be at least 4")
+    if n < 6:
+        raise ValueError("Number of teams must be at least 6")
 
     teams = range(n)  # T = 0..N-1
     weeks = range(n - 1)  # W = 0..N-2
@@ -43,7 +14,7 @@ def solve_round_robin(n):
     slots = range(2)  # S = 0..1 (0=Home, 1=Away)
     total_matches = range((n - 1) * (n // 2))  # M = 0..(N-1)*(N div 2)-1
 
-    # Generate Round Robin schedule using circle method (same as MiniZinc)
+    # Generate Round Robin schedule using circle method
     # rb[p][w][s] gives the team for period p, week w, slot s
     rb = {}
     for p in periods:
@@ -51,29 +22,29 @@ def solve_round_robin(n):
         for w in weeks:
             rb[p][w] = {}
             for s in slots:
-                if s == 0:  # First team in pair
+                if s == 0:  # Home team
                     if p == 0:
                         rb[p][w][s] = n - 1 if w % 2 == 0 else w
                     else:
                         rb[p][w][s] = (p + w) % (n - 1)
-                else:  # Second team in pair
+                else:  # Away team
                     if p == 0:
                         rb[p][w][s] = w if w % 2 == 0 else n - 1
                     else:
                         rb[p][w][s] = (n - p + w - 1) % (n - 1)
 
-    # Flatten to list of match pairs (unordered): match_pairs[m][0/1]
-    match_pairs = {}
+    # Flatten to list of matches: matches[m][0/1]
+    matches = {}
     match_id = 0
     for w in weeks:
         for p in periods:
-            match_pairs[match_id] = {}
-            match_pairs[match_id][0] = rb[p][w][0]
-            match_pairs[match_id][1] = rb[p][w][1]
+            matches[match_id] = {}
+            matches[match_id][0] = rb[p][w][0]
+            matches[match_id][1] = rb[p][w][1]
             match_id += 1
 
     # Create the optimization problem
-    prob = LpProblem("Round_Robin_Scheduler_Optimization", LpMinimize)
+    prob = LpProblem("Single_Round_Robin_Scheduler_Optimization", LpMinimize)
 
     # Decision Variables
     # matches_idx[p][w] = the match ID assigned to period p in week w
@@ -85,9 +56,9 @@ def solve_round_robin(n):
         cat="Integer"
     )
 
-    # home_is_first[p][w] = 1 if first team in pair is home, 0 if second team is home
-    home_is_first = LpVariable.dicts(
-        "HomeIsFirst",
+    # which_is_home[p][w] = 0 if first team in pair is home, 1 if second team is home
+    which_is_home = LpVariable.dicts(
+        "WhichIsHome",
         indices=(periods, weeks),
         cat="Binary"
     )
@@ -105,7 +76,7 @@ def solve_round_robin(n):
     imbalance = LpVariable("Imbalance", lowBound=n, cat="Integer")
 
     # Auxiliary variables for linking matches to teams and home/away
-    # is_match[p][w][m] = 1 if matches_idx[p][w] == m
+    # is_match[p][w][m] = 1 if matches_idx[p][w] == m (one-hot encoding of match m in period p and week w)
     is_match = LpVariable.dicts(
         "IsMatch",
         indices=(periods, weeks, total_matches),
@@ -133,14 +104,14 @@ def solve_round_robin(n):
         cat="Binary"
     )
 
-    # Auxiliary variables for products: is_match[p][w][m] * home_is_first[p][w]
+    # Auxiliary variables for products: is_match[p][w][m] * (1 - which_is_home[p][w])
     match_and_home_first = LpVariable.dicts(
         "MatchAndHomeFirst",
         indices=(periods, weeks, total_matches),
         cat="Binary"
     )
 
-    # Auxiliary variables for products: is_match[p][w][m] * (1 - home_is_first[p][w])
+    # Auxiliary variables for products: is_match[p][w][m] * which_is_home[p][w]
     match_and_home_second = LpVariable.dicts(
         "MatchAndHomeSecond",
         indices=(periods, weeks, total_matches),
@@ -152,7 +123,7 @@ def solve_round_robin(n):
     # 1. SYMMETRY BREAKING: matches_idx[0][0] = 0
     prob += matches_idx[0][0] == 0
 
-    # 2. Link is_match to matches_idx
+    # 2. CHANNELING CONSTRAINT: Link is_match to matches_idx
     for p in periods:
         for w in weeks:
             # Exactly one match is selected
@@ -161,11 +132,11 @@ def solve_round_robin(n):
             # Link to the integer value
             prob += matches_idx[p][w] == lpSum([m * is_match[p][w][m] for m in total_matches])
 
-    # 3. VALIDITY: Each match appears exactly once (alldifferent)
+    # 3. Validity: each match appears exactly once (alldifferent)
     for m in total_matches:
         prob += lpSum([is_match[p][w][m] for p in periods for w in weeks]) == 1
 
-    # 4. Matches must be from the correct week
+    # 4. Intuition: every p (N / 2) matches generated from round robin method, a week is formed
     for w in weeks:
         for p in periods:
             min_match = w * (n // 2)
@@ -177,64 +148,63 @@ def solve_round_robin(n):
                 if min_match <= m <= max_match
             ]) == 1
 
-    # 5. Link team_in_period: team t plays in period p, week w if assigned match contains t
+    # 5. CHANNELING CONSTRAINT: link team_in_period - team t plays in period p, week w if assigned match contains t
     for t in teams:
         for p in periods:
             for w in weeks:
                 prob += team_in_period[t][p][w] == lpSum([
                     is_match[p][w][m]
                     for m in total_matches
-                    if match_pairs[m][0] == t or match_pairs[m][1] == t
+                    if matches[m][0] == t or matches[m][1] == t
                 ])
 
-    # 6. Each team plays at most twice in any period (across all weeks)
+    # 6. Each team plays at most twice in any period
     for t in teams:
         for p in periods:
             prob += lpSum([team_in_period[t][p][w] for w in weeks]) <= 2
 
-    # 7. Linearize products: match_and_home_first[p][w][m] = is_match[p][w][m] * home_is_first[p][w]
-    #    and match_and_home_second[p][w][m] = is_match[p][w][m] * (1 - home_is_first[p][w])
+    # 7. CHANNELING CONSTRAINT: link match_and_home_first and match_and_home_second
     for p in periods:
         for w in weeks:
             for m in total_matches:
-                # match_and_home_first[p][w][m] = is_match[p][w][m] AND home_is_first[p][w]
+                # match_and_home_first[p][w][m] = is_match[p][w][m] AND (1 - which_is_home[p][w])
                 prob += match_and_home_first[p][w][m] <= is_match[p][w][m]
-                prob += match_and_home_first[p][w][m] <= home_is_first[p][w]
-                prob += match_and_home_first[p][w][m] >= is_match[p][w][m] + home_is_first[p][w] - 1
+                prob += match_and_home_first[p][w][m] <= 1 - which_is_home[p][w]
+                prob += match_and_home_first[p][w][m] >= is_match[p][w][m] + (1 - which_is_home[p][w]) - 1
 
                 # match_and_home_second[p][w][m] = is_match[p][w][m] AND (1 - home_is_first[p][w])
                 prob += match_and_home_second[p][w][m] <= is_match[p][w][m]
-                prob += match_and_home_second[p][w][m] <= 1 - home_is_first[p][w]
-                prob += match_and_home_second[p][w][m] >= is_match[p][w][m] - home_is_first[p][w]
+                prob += match_and_home_second[p][w][m] <= which_is_home[p][w]
+                prob += match_and_home_second[p][w][m] >= is_match[p][w][m] + which_is_home[p][w] - 1
 
-    # 8. Link home/away assignments using linearized products
+    # 8. CHANNELING CONSTRAINT: link home/away assignments
     for t in teams:
         for p in periods:
             for w in weeks:
                 # Team t plays home if:
-                # - match has t as first team AND home_is_first == 1, OR
-                # - match has t as second team AND home_is_first == 0
+                # - match has t as first team AND which_is_home == 1, OR
+                # - match has t as second team AND which_is_home == 0
                 prob += team_plays_home[t][p][w] == lpSum([
                     match_and_home_first[p][w][m]
                     for m in total_matches
-                    if match_pairs[m][0] == t
+                    if matches[m][0] == t
                 ]) + lpSum([
                     match_and_home_second[p][w][m]
                     for m in total_matches
-                    if match_pairs[m][1] == t
+                    if matches[m][1] == t
                 ])
 
                 # Team t plays away if:
-                # - match has t as first team AND home_is_first == 0, OR
-                # - match has t as second team AND home_is_first == 1
+                # - match has t as first team AND which_is_home == 0, OR
+                # - match has t as second team AND which_is_home == 1
                 prob += team_plays_away[t][p][w] == lpSum([
                     match_and_home_second[p][w][m]
                     for m in total_matches
-                    if match_pairs[m][0] == t
+                    if matches[m][0] == t
                 ]) + lpSum([
                     match_and_home_first[p][w][m]
                     for m in total_matches
-                    if match_pairs[m][1] == t
+                    if matches[m][1] == t
                 ])
 
     # 9. Count total home and away games for each team
@@ -275,14 +245,14 @@ def solve_round_robin(n):
         for p in periods:
             for w in weeks:
                 match_id = int(value(matches_idx[p][w]))
-                is_first_home = int(value(home_is_first[p][w]))
+                is_first_home = int(value(not which_is_home[p][w]))
 
                 if is_first_home == 1:
-                    home_team = match_pairs[match_id][0]
-                    away_team = match_pairs[match_id][1]
+                    home_team = matches[match_id][0]
+                    away_team = matches[match_id][1]
                 else:
-                    home_team = match_pairs[match_id][1]
-                    away_team = match_pairs[match_id][0]
+                    home_team = matches[match_id][1]
+                    away_team = matches[match_id][0]
 
                 result['schedule'][(p, w)] = (home_team, away_team)
 
@@ -299,7 +269,6 @@ def solve_round_robin(n):
 
 
 def print_schedule(result, n):
-    """Print the schedule and statistics in a human-readable format."""
     if result['status'] not in ["Optimal", "Not Solved"]:
         print(f"\nOptimization Status: {result['status']}")
         print("Unable to find a solution.\n")
@@ -309,29 +278,29 @@ def print_schedule(result, n):
     periods = range(n // 2)
 
     print("\n" + "=" * 80)
-    print("TOURNAMENT SCHEDULE")
+    print(f"SOLUTION FOUND FOR N = {n}")
     print("=" * 80 + "\n")
 
     for w in weeks:
-        print(f"Week {w + 1}:")
-        print("-" * 80)
-        print("  ", end="")
-        for p in periods:
-            print(f"Period {p + 1}\t\t", end="")
-        print("\n  ", end="")
+        print(f"Week {w + 1}:\n")
 
         for p in periods:
             home_team, away_team = result['schedule'][(p, w)]
-            print(f"Team {home_team} vs Team {away_team}\t", end="")
-        print("\n")
+            print(f"  Period {p + 1}: {home_team} vs {away_team}")
+
+        print()
 
     print("=" * 80)
     print("HOME/AWAY BALANCE")
     print("=" * 80)
+
     for t in range(n):
         home_count, away_count = result['home_away_counts'][t]
         diff = abs(home_count - away_count)
-        print(f"Team {t:2d}: Home={home_count:2d}, Away={away_count:2d}, Difference={diff}")
+        print(
+            f"Team {t:2d}: Home={home_count:2d}, "
+            f"Away={away_count:2d}, Difference={diff}"
+        )
 
     print("\n" + "=" * 80)
     print(f"TOTAL IMBALANCE: {result['imbalance']}")
@@ -339,7 +308,6 @@ def print_schedule(result, n):
 
 
 def main():
-    """Main function for command-line usage."""
     if len(sys.argv) != 2:
         print("Usage: python round_robin_scheduler.py <number_of_teams>")
         print("Example: python round_robin_scheduler.py 12")
@@ -352,8 +320,8 @@ def main():
         sys.exit(1)
 
     # Validate input
-    if n < 4:
-        print(f"Error: Number of teams must be at least 4 (got {n})")
+    if n < 6:
+        print(f"Error: Number of teams must be at least 6 (got {n})")
         sys.exit(1)
     if n % 2 != 0:
         print(f"Error: Number of teams must be even (got {n})")
@@ -367,7 +335,7 @@ def main():
 
     try:
         # Solve the problem
-        result = solve_round_robin(n)
+        result = optimize(n)
 
         # Print the results
         print_schedule(result, n)

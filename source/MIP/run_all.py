@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import subprocess
 import sys
 
@@ -10,7 +8,7 @@ def main():
 
     print("\nRunning all instances (n = 6 to 16)...\n")
 
-    for n in range(6, 17, 2):  # 6,8,10,12,14,16
+    for n in range(6, 17, 2):
 
         print("=" * 60)
         print(f"Running instance with n = {n}")
