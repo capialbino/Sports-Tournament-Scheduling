@@ -80,8 +80,13 @@ def parse_solution_matrix(stdout):
     weeks = []
 
     for block in week_blocks:
-        matches = re.findall(r"(\d+)\s+vs\s+(\d+)", block)
-        week_matches = [[int(a), int(b)] for a, b in matches]
+        # Extract matches in format: "Period X: A vs B"
+        period_matches = re.findall(
+            r"Period\s+\d+:\s*(\d+)\s+vs\s+(\d+)",
+            block
+        )
+
+        week_matches = [[int(a), int(b)] for a, b in period_matches]
 
         if week_matches:
             weeks.append(week_matches)
@@ -92,15 +97,18 @@ def parse_solution_matrix(stdout):
     num_weeks = len(weeks)
     num_periods = len(weeks[0])
 
+    # Ensure all weeks have same number of periods
+    for w in weeks:
+        if len(w) != num_periods:
+            return None
+
+    # Convert week-major → period-major (same structure as before)
     matrix = []
 
     for p in range(num_periods):
         row = []
         for w in range(num_weeks):
-            if p < len(weeks[w]):
-                row.append(weeks[w][p])
-            else:
-                return None
+            row.append(weeks[w][p])
         matrix.append(row)
 
     # Convert team numbering from 0-based to 1-based

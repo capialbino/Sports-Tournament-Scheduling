@@ -196,14 +196,11 @@ def print_solution(N, W, P, match_pairs, extracted_solution):
 
     for w in W:
         print(f"\nWeek {w + 1}:\n")
-        print("  ", end="")
-        for p in P:
-            print(f"Period {p + 1}\t", end="")
-        print("\n    ", end="")
+
         for p in P:
             m = solution[p, w]
 
-            # Determine home/away based on whether home_first is available
+            # Determine home/away
             if (p, w) in home_first:
                 if home_first[p, w]:
                     home = match_pairs[m, 0]
@@ -212,12 +209,12 @@ def print_solution(N, W, P, match_pairs, extracted_solution):
                     home = match_pairs[m, 1]
                     away = match_pairs[m, 0]
             else:
-                # Default: first team is home
                 home = match_pairs[m, 0]
                 away = match_pairs[m, 1]
 
-            print(f"{home} vs {away}\t", end="")
-        print("\n")
+            print(f"  Period {p + 1}: {home} vs {away}")
+
+        print()
 
     # Print balance information if available
     if home_counts is not None and away_counts is not None:
