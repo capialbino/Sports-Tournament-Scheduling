@@ -42,6 +42,7 @@ def run_minizinc_model(mzn_file, solver, N, timeout_sec=300):
     runtime_floor = math.floor(actual_runtime)
 
     stdout = result.stdout
+    print(stdout)
 
     # --------------------------------------------------
     # Objective extraction
@@ -74,13 +75,14 @@ def run_minizinc_model(mzn_file, solver, N, timeout_sec=300):
 
 def parse_solution_matrix(stdout):
     """
-    Parses MiniZinc textual output into a structured matrix.
+    Parses MiniZinc textual output.
     """
+
     # --------------------------------------------------
     # Extract week blocks
     # --------------------------------------------------
     week_blocks = re.findall(
-        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Home/Away Balance:|----------)",
+        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Home/Away Balance:|Total Imbalance:|----------|$)",
         stdout,
         re.DOTALL
     )
@@ -91,14 +93,17 @@ def parse_solution_matrix(stdout):
     weeks = []
 
     # --------------------------------------------------
-    # Extract matches for each week
+    # Extract matches per period for each week
     # --------------------------------------------------
     for block in week_blocks:
-        # Extract all occurrences of "X vs Y"
-        matches = re.findall(r"(\d+)\s+vs\s+(\d+)", block)
 
-        # Convert extracted strings to integers
-        week_matches = [[int(a), int(b)] for a, b in matches]
+        # Match lines like: "Period 1: 0 vs 5"
+        period_matches = re.findall(
+            r"Period\s+\d+:\s*(\d+)\s+vs\s+(\d+)",
+            block
+        )
+
+        week_matches = [[int(a), int(b)] for a, b in period_matches]
 
         if week_matches:
             weeks.append(week_matches)
@@ -106,25 +111,23 @@ def parse_solution_matrix(stdout):
     if not weeks:
         return None
 
-    # --------------------------------------------------
-    # Convert week-major structure to period-major structure
-    # --------------------------------------------------
     num_weeks = len(weeks)
-    num_periods = len(weeks[0]) if weeks else 0
+    num_periods = len(weeks[0])
 
-    if num_periods == 0:
-        return None
+    # Ensure all weeks have same number of periods
+    for w in weeks:
+        if len(w) != num_periods:
+            return None
 
+    # --------------------------------------------------
+    # Convert week-major → period-major structure
+    # --------------------------------------------------
     matrix = []
 
     for p in range(num_periods):
         row = []
         for w in range(num_weeks):
-            if p < len(weeks[w]):
-                row.append(weeks[w][p])
-            else:
-                # Inconsistent number of matches across weeks
-                return None
+            row.append(weeks[w][p])
         matrix.append(row)
 
     # --------------------------------------------------
@@ -144,11 +147,18 @@ def main():
     collects results, and stores them in a single grouped JSON file.
     """
     parser = argparse.ArgumentParser(
-        description="Run all .mzn models in a directory with all solvers and produce ONE grouped JSON."
+        description="Run MiniZinc models and produce grouped JSON results."
     )
 
-    parser.add_argument("--dir", type=str, required=True,
+    parser.add_argument("--dir", type=str,
                         help="Directory containing .mzn files")
+
+    parser.add_argument("--model", type=str,
+                        help="Single MiniZinc model file to run")
+
+    parser.add_argument("--solver", type=str,
+                        choices=ALLOWED_SOLVERS,
+                        help="Specific solver to use (required if --model is used)")
 
     parser.add_argument("--N", type=int, required=True,
                         help="Instance size parameter")
@@ -157,25 +167,56 @@ def main():
                         help="Timeout in seconds (default 300)")
 
     parser.add_argument("--outdir", type=str, default="res",
-                        help="Directory where JSON file will be saved (default: res)")
+                        help="Directory where JSON file will be saved")
 
-    parser.add_argument("--skip_non_solvable", type=bool, default=True,
-                        help="If True, do not execute a model-solver pair at the current N when the same pair produced no solution at N-2.")
+    parser.add_argument(
+        "--no-skip-non-solvable",
+        dest="skip_non_solvable",
+        action="store_false",
+        help="Disable skipping of model-solver pairs that had no solution at N-2."
+    )
+
+    parser.set_defaults(skip_non_solvable=True)
 
     args = parser.parse_args()
 
-    model_dir = Path(args.dir)
+    # --------------------------------------------------
+    # Validate execution mode
+    # --------------------------------------------------
 
-    # Validate directory
-    if not model_dir.exists() or not model_dir.is_dir():
-        print("Invalid directory")
-        return
+    if args.model:
+        # Single model mode
+        model_path = Path(args.model)
 
-    # Collect all MiniZinc model files
-    mzn_files = list(model_dir.glob("*.mzn"))
+        if not model_path.exists() or not model_path.is_file():
+            print("Invalid model file")
+            return
 
-    if not mzn_files:
-        print("No .mzn files found")
+        if not args.solver:
+            print("--solver must be specified when using --model")
+            return
+
+        mzn_files = [model_path]
+        solvers_to_use = [args.solver]
+
+    elif args.dir:
+        # Directory mode
+        model_dir = Path(args.dir)
+
+        if not model_dir.exists() or not model_dir.is_dir():
+            print("Invalid directory")
+            return
+
+        mzn_files = list(model_dir.glob("*.mzn"))
+
+        if not mzn_files:
+            print("No .mzn files found")
+            return
+
+        solvers_to_use = ALLOWED_SOLVERS
+
+    else:
+        print("You must specify either --dir or --model")
         return
 
     results = {}
@@ -199,7 +240,8 @@ def main():
     for mzn_file in mzn_files:
         file_name = mzn_file.stem
 
-        for solver in ALLOWED_SOLVERS:
+        for solver in solvers_to_use:
+
             approach_name = f"{file_name}-{solver}"
             print(f"Processing {approach_name} for N={args.N}...")
 

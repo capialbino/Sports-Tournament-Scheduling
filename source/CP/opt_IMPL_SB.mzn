@@ -163,28 +163,38 @@ solve :: int_search(
 ) minimize imbalance;
 
 % OUTPUT
-output [
+
+output
+[
   concat([
     "Week \(w+1):\n\n",
-    "  ",  
-    concat([ "Period \(p+1)\t" | p in P ]), 
-    "\n    ",  
     concat([
       let {
         int: m = fix(matches_idx[p, w]),
-        int: home = if fix(which_is_home[p, w]) == 0 then matches[m, 0] else matches[m, 1] endif,
-        int: away = if fix(which_is_home[p, w]) == 0 then matches[m, 1] else matches[m, 0] endif
+        int: home =
+          if fix(which_is_home[p, w]) == 0
+          then matches[m, 0]
+          else matches[m, 1]
+          endif,
+        int: away =
+          if fix(which_is_home[p, w]) == 0
+          then matches[m, 1]
+          else matches[m, 0]
+          endif
       } in
-      "\(home) vs \(away) \t"
+      "  Period \(p+1): \(home) vs \(away)\n"
       | p in P
     ]),
-    "\n\n"  
+    "\n"
   ])
   | w in W
-] ++
-["\n\nHome/Away Balance:\n"] ++
+]
+++
+["\nHome/Away Balance:\n"]
+++
 [
   "Team \(t): Home=\(fix(Cha[t, 0])), Away=\(fix(Cha[t, 1])), Diff=\(abs(fix(Cha[t, 0]) - fix(Cha[t, 1])))\n"
   | t in T
-] ++
+]
+++
 ["\nTotal Imbalance: \(fix(imbalance))\n"];

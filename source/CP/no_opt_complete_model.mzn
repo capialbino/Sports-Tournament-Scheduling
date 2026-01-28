@@ -106,18 +106,21 @@ solve :: int_search(
 ) satisfy;
 
 % OUTPUT
+% OUTPUT
 
 output [
   concat([
     "Week \(w+1):\n\n",
-    "  ",  
-    concat([ "Period \(p+1)\t" | p in P ]), 
-    "\n    ",  
     concat([
-      "\(matches[matches_idx[p, w], 0]) vs \(matches[matches_idx[p, w], 1]) \t"
+      "  Period \(p+1): "
+      ++ show(matches[matches_idx[p, w], 0])
+      ++ " vs "
+      ++ show(matches[matches_idx[p, w], 1])
+      ++ "\n"
       | p in P
     ]),
-    "\n\n"  
+    "\n"
   ])
   | w in W
 ];
+
