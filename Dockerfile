@@ -22,7 +22,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
-COPY ./source .
+COPY ./source ./source
+COPY ./res ./res
 COPY solution_checker.py .
 
 CMD ["sh"]
