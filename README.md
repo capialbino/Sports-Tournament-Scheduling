@@ -88,16 +88,19 @@ python source/CP/run.py --dir source/CP --N <num_teams> [--timeout <seconds>] [-
 python source/CP/run.py --dir source/CP --N 10 --timeout 300 --outdir res/CP
 ```
 
-### SAT (Z3)
+### SAT (Z3 & OR-Tools)
 
-#### Run the Z3 solver:
+#### Run the SAT solver:
 
 ```bash
-python source/SAT/run.py --N <num_teams> --mode <mode> [--timeout <seconds>] [--outdir <output_dir>]
+python source/SAT/run.py --N <num_teams> --mode <mode> --solver <solver> [--timeout <seconds>] [--outdir <output_dir>]
 ```
 
 **Parameters:**
 - `--N`: Number of teams (must be even, minimum 6)
+- `--solver`: Solver to use:
+    - `z3`: Z3 SMT solver
+    - `ortools`: OR-Tools CP-SAT solver
 - `--mode`: Execution mode:
   - `satisfy`: Find a feasible solution
   - `optimize`: Find an optimal solution
@@ -107,14 +110,11 @@ python source/SAT/run.py --N <num_teams> --mode <mode> [--timeout <seconds>] [--
 
 **Examples:**
 ```bash
-# Run satisfaction only
-python source/SAT/run.py --N 8 --mode satisfy --timeout 300
+# Run satisfaction with Z3
+python source/SAT/run.py --N 8 --mode satisfy --solver z3
 
-# Run optimization only
-python source/SAT/run.py --N 10 --mode optimize --timeout 300
-
-# Run both modes
-python source/SAT/run.py --N 6 --mode both --timeout 300
+# Run optimization with OR-Tools
+python source/SAT/run.py --N 10 --mode optimize --solver ortools --timeout 600
 ```
 
 ### Mixed Integer Programming (MIP)
@@ -156,16 +156,16 @@ This executes:
 
 ### Run All SAT Models
 
-Runs Z3 solver for N = 6, 8, 10, ..., 20:
+Runs both solvers (z3 and ortools) for N = 6, 8, 10, ..., 22:
 
 ```bash
 python source/SAT/run_all.py
 ```
 
 This executes:
-- Both `satisfy` and `optimize` modes for N ≤ 10
-- Only `satisfy` mode for N > 10 (optimization becomes too expensive)
-- For even values of N from 6 to 20
+- Both `satisfy` and `optimize` modes for every N in the range
+- Both `z3` and `ortools` solvers
+- For even values of N from 6 to 22
 - Results saved to `res/SAT/`
 - Timeout: 300 seconds per instance
 
@@ -252,7 +252,7 @@ For `opt_baseline.mzn` CP with `gecode` and `chuffed` solver (N=8):
 ## Solvers Used
 
 - **CP**: MiniZinc with Gecode, Chuffed, and OR-Tools CP-SAT
-- **SAT**: Z3 solver
+- **SAT**: Z3 solver and OR-Tools CP-SAT
 - **MIP**: CBC (COIN-OR Branch and Cut) MILP solver
 
 All solvers are free and open-source, ensuring full reproducibility.

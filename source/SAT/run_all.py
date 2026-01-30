@@ -5,64 +5,59 @@ import time
 import math
 
 
-TIMEOUT = 300  # seconds
+TIMEOUT = 300
 
 
 def main():
-    # Run from parent folder
     save_dir = "./res/SAT"
-
     os.makedirs(save_dir, exist_ok=True)
 
-    for n in range(6, 21, 2):
+    solvers = ["z3", "ortools"]
+    modes = ["satisfy", "optimize"]
 
-        mode = "both" if n <= 10 else "satisfy"
+    for n in range(6, 23, 2):
 
         print("=" * 60)
-        print(f"Running solver for N={n} (mode={mode})")
+        print(f"Running N={n}")
         print("=" * 60)
 
-        cmd = [
-            sys.executable,
-            "source/SAT/run.py",
-            "--N", str(n),
-            "--mode", mode,
-            "--outdir", save_dir,
-            "--timeout", str(TIMEOUT)
-        ]
+        for solver in solvers:
+            for mode in modes:
 
-        start_time = time.time()
+                cmd = [
+                    sys.executable,
+                    "source/SAT/run.py",
+                    "--N", str(n),
+                    "--mode", mode,
+                    "--solver", solver,
+                    "--outdir", save_dir,
+                    "--timeout", str(TIMEOUT)
+                ]
 
-        try:
-            result = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=TIMEOUT
-            )
+                start_time = time.time()
 
-            end_time = time.time()
-            runtime = math.floor(end_time - start_time)
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=TIMEOUT
+                    )
 
-            print(f"Runtime: {runtime} seconds\n")
-            print(result.stdout)
+                    runtime = math.floor(time.time() - start_time)
 
-            if result.stderr:
-                print("Warnings/Errors:")
-                print(result.stderr)
+                    print(f"\n{solver}-{mode} runtime: {runtime}s")
 
-        except subprocess.TimeoutExpired as te:
-            end_time = time.time()
-            runtime = TIMEOUT
+                    if result.stdout:
+                        print(result.stdout)
 
-            print(f"\nTimeout: Solver exceeded {TIMEOUT} seconds for N={n}")
-            print("Process terminated.")
-            print(f"Recorded runtime: {runtime} seconds\n")
+                    if result.stderr:
+                        print("Errors:")
+                        print(result.stderr)
 
-        except Exception as e:
-            print(f"\nError while running N={n}")
-            print(str(e))
+                except subprocess.TimeoutExpired:
+                    print(f"Timeout at N={n} ({solver}-{mode})")
 
     print("\nBatch execution completed.")
 

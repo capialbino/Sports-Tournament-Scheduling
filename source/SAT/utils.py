@@ -1,5 +1,12 @@
-from z3 import is_true
 import json
+from z3 import is_true
+
+try:
+    from ortools.sat.python import cp_model
+    ORTOOLS_AVAILABLE = True
+except ImportError:
+    ORTOOLS_AVAILABLE = False
+
 
 def generate_rb_and_flattened(N, W, P, S):
     """
@@ -31,6 +38,7 @@ def generate_rb_and_flattened(N, W, P, S):
 
     return rb, matches
 
+
 def calculate_params(N):
     T = range(N)  # Teams
     S = range(2)  # Slots (0=Home, 1=Away)
@@ -51,27 +59,36 @@ def extract_solution(
         away_count_vars=None,
         diff_vars=None,
         T=None,
-        N=None
+        N=None,
+        backend='z3'
 ):
-    """
-    Extract solution from Z3 model.
-    """
     solution = {}
     home_first = {}
+
+    # Determine which backend we're using
+    is_ortools = backend == 'ortools' or (ORTOOLS_AVAILABLE and hasattr(model, 'Value'))
 
     # Extract match assignments
     for p in P:
         for w in W:
             for m in M:
-                if is_true(model.evaluate(matches_idx_vars[p, w][m])):
-                    solution[p, w] = m
-                    break
+                if is_ortools:
+                    if model.Value(matches_idx_vars[p, w][m]) == 1:
+                        solution[p, w] = m
+                        break
+                else:
+                    if is_true(model.evaluate(matches_idx_vars[p, w][m])):
+                        solution[p, w] = m
+                        break
 
     # Extract home/away orientation if provided
     if home_is_first_vars is not None:
         for p in P:
             for w in W:
-                home_first[p, w] = is_true(model.evaluate(home_is_first_vars[p, w]))
+                if is_ortools:
+                    home_first[p, w] = model.Value(home_is_first_vars[p, w]) == 1
+                else:
+                    home_first[p, w] = is_true(model.evaluate(home_is_first_vars[p, w]))
 
     # Extract counts and differences if provided
     home_counts = None
@@ -83,25 +100,40 @@ def extract_solution(
         home_counts = {}
         for t in T:
             for k in range(N):
-                if is_true(model.evaluate(home_count_vars[t][k])):
-                    home_counts[t] = k
-                    break
+                if is_ortools:
+                    if model.Value(home_count_vars[t][k]) == 1:
+                        home_counts[t] = k
+                        break
+                else:
+                    if is_true(model.evaluate(home_count_vars[t][k])):
+                        home_counts[t] = k
+                        break
 
     if away_count_vars is not None and T is not None and N is not None:
         away_counts = {}
         for t in T:
             for k in range(N):
-                if is_true(model.evaluate(away_count_vars[t][k])):
-                    away_counts[t] = k
-                    break
+                if is_ortools:
+                    if model.Value(away_count_vars[t][k]) == 1:
+                        away_counts[t] = k
+                        break
+                else:
+                    if is_true(model.evaluate(away_count_vars[t][k])):
+                        away_counts[t] = k
+                        break
 
     if diff_vars is not None and T is not None and N is not None:
         diffs = {}
         for t in T:
             for k in range(N):
-                if is_true(model.evaluate(diff_vars[t][k])):
-                    diffs[t] = k
-                    break
+                if is_ortools:
+                    if model.Value(diff_vars[t][k]) == 1:
+                        diffs[t] = k
+                        break
+                else:
+                    if is_true(model.evaluate(diff_vars[t][k])):
+                        diffs[t] = k
+                        break
         total_imbalance = sum(diffs.values())
 
     return {
@@ -117,8 +149,8 @@ def extract_solution(
 def format_json(
         P,
         W,
-        match_pairs,    # matches flattened array
-        extracted_solution, # the solution from extract_solution
+        match_pairs,
+        extracted_solution,
         runtime,
         approach_name,
         is_optimal=True,
@@ -133,9 +165,9 @@ def format_json(
     # Build the solution matrix: (n/2) × (n-1) where each entry is [home, away]
     sol_matrix = []
 
-    for p in P:  # Iterate through periods (rows)
+    for p in P:
         period_row = []
-        for w in W:  # Iterate through weeks (columns)
+        for w in W:
             m = solution[p, w]
 
             # Determine home/away based on whether home_first is available
@@ -180,9 +212,6 @@ def save_json(json_data, filename):
 
 
 def print_solution(N, W, P, match_pairs, extracted_solution):
-    """
-    Print the schedule in a formatted table.
-    """
     solution = extracted_solution['solution']
     home_first = extracted_solution.get('home_first', {})
     home_counts = extracted_solution.get('home_counts')
