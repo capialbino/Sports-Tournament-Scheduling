@@ -9,16 +9,13 @@ TIMEOUT = 300
 
 
 def main():
-    """
-    Run this script from parent dir.
-    """
-    for N in range(12, 19, 2):
+    for N in range(6, 23, 2):
         print("\n==============================")
         print(f"Launching run for N = {N}")
         print("==============================")
 
         cmd = [
-            sys.executable,      # uses same python interpreter
+            sys.executable,
             SCRIPT_NAME,
             "--dir", SOURCE_DIR,
             "--N", str(N),
@@ -26,7 +23,12 @@ def main():
             "--timeout", str(TIMEOUT)
         ]
 
-        result = subprocess.run(cmd)
+        result = subprocess.run(
+            cmd,
+            cmdstdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
 
         if result.returncode != 0:
             print(f"Run failed for N = {N}")

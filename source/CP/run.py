@@ -7,15 +7,24 @@ import argparse
 import re
 from pathlib import Path
 
-
-# List of MiniZinc solvers allowed by this script
 ALLOWED_SOLVERS = ["gecode", "chuffed", "cp-sat"]
 
+def previous_unsolved(outdir, N, approach_name):
+    prev_n = N - 2
+    prev_file = os.path.join(outdir, f"{prev_n}.json")
+
+    if not os.path.exists(prev_file):
+        return False
+
+    with open(prev_file, "r") as f:
+        data = json.load(f)
+
+    if approach_name not in data:
+        return False
+
+    return data[approach_name]["sol"] == []
 
 def run_minizinc_model(mzn_file, solver, N, timeout_sec=300):
-    """
-    Executes a MiniZinc model with a given solver and instance size.
-    """
     cmd = [
         "minizinc",
         "--solver", solver,
@@ -44,27 +53,16 @@ def run_minizinc_model(mzn_file, solver, N, timeout_sec=300):
     stdout = result.stdout
     print(stdout)
 
-    # --------------------------------------------------
     # Objective extraction
-    # --------------------------------------------------
     obj = None
     obj_match = re.search(r"Total Imbalance:\s*(\d+)", stdout)
     if obj_match:
         obj = int(obj_match.group(1))
 
-    # --------------------------------------------------
     # Solution extraction
-    # --------------------------------------------------
     sol = parse_solution_matrix(stdout)
 
-    # --------------------------------------------------
     # Optimality detection
-    # --------------------------------------------------
-    # A solution is considered non-optimal if:
-    #   - No valid solution matrix was parsed, OR
-    #   - Objective exists and exceeds N
-    #
-    # In such cases, runtime is set to timeout as required by spec
     optimal = True
     if not sol or (obj and obj > N):
         optimal = False
@@ -74,13 +72,7 @@ def run_minizinc_model(mzn_file, solver, N, timeout_sec=300):
 
 
 def parse_solution_matrix(stdout):
-    """
-    Parses MiniZinc textual output.
-    """
-
-    # --------------------------------------------------
     # Extract week blocks
-    # --------------------------------------------------
     week_blocks = re.findall(
         r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Home/Away Balance:|Total Imbalance:|----------|$)",
         stdout,
@@ -92,12 +84,8 @@ def parse_solution_matrix(stdout):
 
     weeks = []
 
-    # --------------------------------------------------
     # Extract matches per period for each week
-    # --------------------------------------------------
     for block in week_blocks:
-
-        # Match lines like: "Period 1: 0 vs 5"
         period_matches = re.findall(
             r"Period\s+\d+:\s*(\d+)\s+vs\s+(\d+)",
             block
@@ -119,9 +107,7 @@ def parse_solution_matrix(stdout):
         if len(w) != num_periods:
             return None
 
-    # --------------------------------------------------
-    # Convert week-major → period-major structure
-    # --------------------------------------------------
+    # Convert week-major to period-major structure
     matrix = []
 
     for p in range(num_periods):
@@ -130,9 +116,7 @@ def parse_solution_matrix(stdout):
             row.append(weeks[w][p])
         matrix.append(row)
 
-    # --------------------------------------------------
     # Convert team numbering from 0-based to 1-based
-    # --------------------------------------------------
     for p in range(num_periods):
         for w in range(num_weeks):
             for t in range(2):
@@ -142,10 +126,6 @@ def parse_solution_matrix(stdout):
 
 
 def main():
-    """
-    Runs all .mzn files in a directory with all allowed solvers,
-    collects results, and stores them in a single grouped JSON file.
-    """
     parser = argparse.ArgumentParser(
         description="Run MiniZinc models and produce grouped JSON results."
     )
@@ -180,10 +160,7 @@ def main():
 
     args = parser.parse_args()
 
-    # --------------------------------------------------
     # Validate execution mode
-    # --------------------------------------------------
-
     if args.model:
         # Single model mode
         model_path = Path(args.model)
@@ -221,22 +198,7 @@ def main():
 
     results = {}
 
-    # --------------------------------------------------
-    # Load previous N-2 results (if exist)
-    # --------------------------------------------------
-    if args.skip_non_solvable:
-        prev_results = {}
-        prev_N = args.N - 2
-
-        if prev_N > 4:
-            prev_output_path = os.path.join(args.outdir, f"{prev_N}.json")
-            if os.path.exists(prev_output_path):
-                with open(prev_output_path, "r") as f:
-                    prev_results = json.load(f)
-
-    # --------------------------------------------------
     # Run each model
-    # --------------------------------------------------
     for mzn_file in mzn_files:
         file_name = mzn_file.stem
 
@@ -245,27 +207,19 @@ def main():
             approach_name = f"{file_name}-{solver}"
             print(f"Processing {approach_name} for N={args.N}...")
 
-            # --------------------------------------------------
-            # Check if previous N-2 had no solution (if true then neither current N would be solved)
-            # --------------------------------------------------
-            if args.skip_non_solvable:
-                if approach_name in prev_results:
-                    prev_sol = prev_results[approach_name].get("sol", [])
+            # Skip logic
+            if args.skip_non_solvable and args.N > 6:
+                if previous_unsolved(args.outdir, args.N, approach_name):
+                    print(f"Skipping {approach_name} at N={args.N} (unsolved at N={args.N - 2})")
+                    results[approach_name] = {
+                        "time": args.timeout,
+                        "optimal": False,
+                        "obj": None,
+                        "sol": []
+                    }
+                    continue
 
-                    if prev_sol == []:
-                        print(f"Skipping {approach_name} (no solution at N={prev_N})")
-
-                        results[approach_name] = {
-                            "time": args.timeout,
-                            "optimal": False,
-                            "obj": None,
-                            "sol": []
-                        }
-                        continue
-
-            # --------------------------------------------------
             # Otherwise run normally
-            # --------------------------------------------------
             runtime, optimal, obj, sol = run_minizinc_model(
                 mzn_file=mzn_file,
                 solver=solver,
@@ -280,9 +234,7 @@ def main():
                 "sol": sol if sol else []
             }
 
-    # --------------------------------------------------
     # Save grouped results to JSON
-    # --------------------------------------------------
     os.makedirs(args.outdir, exist_ok=True)
     output_path = os.path.join(args.outdir, f"{args.N}.json")
 

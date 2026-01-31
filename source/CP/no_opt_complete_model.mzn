@@ -106,7 +106,6 @@ solve :: int_search(
 ) satisfy;
 
 % OUTPUT
-% OUTPUT
 
 output [
   concat([
@@ -123,4 +122,3 @@ output [
   ])
   | w in W
 ];
-

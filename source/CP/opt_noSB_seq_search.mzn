@@ -121,17 +121,11 @@ constraint imbalance >= N;
 % IMPLIED CONSTRAINTS
 
 % Each period across all weeks must have all different match IDs
-% This is redundant with the global alldifferent constraint, but posting it
-% per-period creates stronger propagation at the local level, helping the
-% solver detect conflicts earlier when assigning matches to specific periods.
 constraint forall(p in P)(
     alldifferent([matches_idx[p, w] | w in W])
 );
 
 % Dual constraint - each week must have all different match IDs
-% This is also redundant with the global alldifferent, but provides the
-% dual view: ensures that within each week, all periods have different matches.
-% This strengthens propagation when assigning matches within a single week.
 constraint forall(w in W)(
     alldifferent([matches_idx[p, w] | p in P])
 );
