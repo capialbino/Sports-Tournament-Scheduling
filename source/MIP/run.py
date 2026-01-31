@@ -25,8 +25,9 @@ def previous_unsolved(outdir, N, solver):
     return data[key]["sol"] == []
 
 def parse_solution_matrix(stdout):
+    # Extract week blocks
     week_blocks = re.findall(
-        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Total Imbalance:|----------|$)",
+        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Home/Away Balance:|Total Imbalance:|----------|$)",
         stdout,
         re.DOTALL
     )
@@ -36,8 +37,8 @@ def parse_solution_matrix(stdout):
 
     weeks = []
 
+    # Extract matches per period for each week
     for block in week_blocks:
-        # Extract matches in format: "Period X: A vs B"
         period_matches = re.findall(
             r"Period\s+\d+:\s*(\d+)\s+vs\s+(\d+)",
             block
@@ -59,7 +60,7 @@ def parse_solution_matrix(stdout):
         if len(w) != num_periods:
             return None
 
-    # Convert week-major → period-major (same structure as before)
+    # Convert week-major to period-major structure
     matrix = []
 
     for p in range(num_periods):
@@ -77,7 +78,6 @@ def parse_solution_matrix(stdout):
     return matrix
 
 def run_scheduler(n, solver, timeout=300):
-
     result = {
         "time": timeout,
         "optimal": False,
@@ -92,10 +92,11 @@ def run_scheduler(n, solver, timeout=300):
             [
                 sys.executable,
                 "source/MIP/model.py",
-                "--N", str(n),                     # positional arg: teams
+                "--N", str(n),
                 "--solver", solver,
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=timeout
         )
@@ -253,9 +254,9 @@ Examples:
         json.dump(existing, f, indent=2)
 
     # summary
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 60)
     print("RESULTS SUMMARY")
-    print("=" * 80)
+    print("=" * 60)
     print(f"Teams:                        {args.N}")
     print(f"Solver:                       {args.solver}")
     print(f"Time:                         {result['time']} seconds")
@@ -263,7 +264,7 @@ Examples:
     print(f"Objective (Total Imbalance):  {result['obj']}")
     print(f"Solution:                     {'Found' if result['sol'] else 'Not found'}")
     print(f"\nResults saved to: {output_file}")
-    print("=" * 80 + "\n")
+    print("=" * 60 + "\n")
 
     sys.exit(0 if result['optimal'] else 1)
 

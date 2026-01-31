@@ -248,9 +248,9 @@ def print_schedule(result, n):
     weeks = range(n - 1)
     periods = range(n // 2)
 
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 60)
     print(f"SOLUTION FOUND FOR N = {n}")
-    print("=" * 80 + "\n")
+    print("=" * 60 + "\n")
 
     for w in weeks:
         print(f"Week {w + 1}:\n")
@@ -261,9 +261,9 @@ def print_schedule(result, n):
 
         print()
 
-    print("=" * 80)
+    print("=" * 60)
     print("HOME/AWAY BALANCE")
-    print("=" * 80)
+    print("=" * 60)
 
     for t in range(n):
         home_count, away_count = result['home_away_counts'][t]
@@ -273,9 +273,9 @@ def print_schedule(result, n):
             f"Away={int(away_count):2d}, Difference={int(diff)}"
         )
 
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 60)
     print(f"TOTAL IMBALANCE: {result['imbalance']}")
-    print("=" * 80 + "\n")
+    print("=" * 60 + "\n")
 
 
 def main():
