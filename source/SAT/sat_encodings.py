@@ -1,35 +1,24 @@
 from itertools import combinations
 
 from z3 import *
-
-try:
-    from ortools.sat.python import cp_model
-
-    ORTOOLS_AVAILABLE = True
-except ImportError:
-    ORTOOLS_AVAILABLE = False
+from ortools.sat.python import cp_model
 
 
-# ============================================================================
 # Helper functions to detect backend type
-# ============================================================================
 
 def is_ortools_var(var):
     """Check if a variable is from OR-Tools."""
-    return ORTOOLS_AVAILABLE and hasattr(var, '__module__') and 'ortools' in str(type(var))
+    return hasattr(var, '__module__') and 'ortools' in str(type(var))
 
 
 def is_ortools_backend(solver):
     """Check if solver is OR-Tools backend."""
-    return hasattr(solver, 'model') and ORTOOLS_AVAILABLE
+    return hasattr(solver, 'model')
 
 
-# ============================================================================
 # Unified encoding functions
-# ============================================================================
 
 def at_least_one(bool_vars, solver=None):
-    """At least one variable must be true."""
     if not bool_vars:
         return True
 
@@ -43,7 +32,6 @@ def at_least_one(bool_vars, solver=None):
 
 
 def at_most_one(bool_vars, solver=None, name=""):
-    """At most one variable can be true."""
     if len(bool_vars) <= 1:
         return True
 
@@ -69,7 +57,6 @@ def exactly_one(bool_vars, solver=None, name=""):
         )
 
 def at_most_k(bool_vars, k, solver=None, name=""):
-    """At most k variables can be true."""
     if len(bool_vars) <= k:
         return True
 
@@ -83,7 +70,6 @@ def at_most_k(bool_vars, k, solver=None, name=""):
 
 
 def at_most_k_seq_z3(bool_vars, k, name):
-    """Sequential counter encoding for at-most-k constraint."""
     n = len(bool_vars)
     if n <= k:
         return True

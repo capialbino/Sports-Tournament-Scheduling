@@ -1,18 +1,9 @@
 import json
 from z3 import is_true
-
-try:
-    from ortools.sat.python import cp_model
-    ORTOOLS_AVAILABLE = True
-except ImportError:
-    ORTOOLS_AVAILABLE = False
+from ortools.sat.python import cp_model
 
 
 def generate_rb_and_flattened(N, W, P, S):
-    """
-    Generate Round Robin schedule using Circle Method.
-    Return W,P,S matrix and flattened W*P, S array
-    """
     rb = {}
     for p in P:
         for w in W:
@@ -66,7 +57,7 @@ def extract_solution(
     home_first = {}
 
     # Determine which backend we're using
-    is_ortools = backend == 'ortools' or (ORTOOLS_AVAILABLE and hasattr(model, 'Value'))
+    is_ortools = backend == 'ortools' or hasattr(model, 'Value')
 
     # Extract match assignments
     for p in P:
@@ -156,9 +147,6 @@ def format_json(
         is_optimal=True,
         objective_value=None
 ):
-    """
-    Format solution as JSON according to specification.
-    """
     solution = extracted_solution['solution']
     home_first = extracted_solution.get('home_first', {})
 

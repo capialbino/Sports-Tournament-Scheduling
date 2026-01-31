@@ -1,19 +1,10 @@
 from z3 import *
-
-try:
-    from ortools.sat.python import cp_model
-
-    ORTOOLS_AVAILABLE = True
-except ImportError:
-    ORTOOLS_AVAILABLE = False
+from ortools.sat.python import cp_model
 
 
 class SolverBackend:
 
     def create_bool_var(self, name):
-        raise NotImplementedError
-
-    def create_int_var(self, name, min_val, max_val):
         raise NotImplementedError
 
     def add_constraint(self, constraint):
@@ -43,9 +34,6 @@ class Z3Backend(SolverBackend):
 
     def create_bool_var(self, name):
         return Bool(name)
-
-    def create_int_var(self, name, min_val, max_val):
-        return Int(name)
 
     def add_constraint(self, constraint):
         self.solver.add(constraint)
@@ -91,13 +79,9 @@ class Z3Backend(SolverBackend):
 class ORToolsBackend(SolverBackend):
 
     def __init__(self):
-        if not ORTOOLS_AVAILABLE:
-            raise ImportError("OR-Tools not available. Install with: pip install ortools")
-
         self.model = cp_model.CpModel()
         self.solver = cp_model.CpSolver()
         self.solver.parameters.log_search_progress = False
-        self.solver.parameters.num_search_workers = 8
 
         # Track variables for one-hot encoding compatibility
         self._var_registry = {}
@@ -110,15 +94,10 @@ class ORToolsBackend(SolverBackend):
         self._var_registry[name] = var
         return var
 
-    def create_int_var(self, name, min_val, max_val):
-        var = self.model.NewIntVar(min_val, max_val, name)
-        self._var_registry[name] = var
-        return var
-
     def add_constraint(self, constraint):
         """
-        Add constraint. This needs to handle Z3-style constraints
-        and convert them to OR-Tools format.
+        Add constraint.
+        This needs to handle Z3-style constraints and convert them to OR-Tools format.
         """
         # For OR-Tools, we add constraints directly to the model
         # The constraint conversion happens in the encoding functions

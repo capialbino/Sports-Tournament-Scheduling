@@ -39,7 +39,8 @@ def main():
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    check=True
                 )
 
                 runtime = math.floor(time.time() - start_time)

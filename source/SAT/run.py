@@ -73,8 +73,9 @@ def run_model(script_path, mode, solver, N, timeout_sec=300):
 
 
 def parse_solution_matrix(stdout):
+    # Extract week blocks
     week_blocks = re.findall(
-        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Total Imbalance:|----------|$)",
+        r"Week\s+\d+:(.*?)(?=Week\s+\d+:|Home/Away Balance:|Total Imbalance:|----------|$)",
         stdout,
         re.DOTALL
     )
@@ -84,8 +85,8 @@ def parse_solution_matrix(stdout):
 
     weeks = []
 
+    # Extract matches per period for each week
     for block in week_blocks:
-        # Extract matches in format: "Period X: A vs B"
         period_matches = re.findall(
             r"Period\s+\d+:\s*(\d+)\s+vs\s+(\d+)",
             block
@@ -107,7 +108,7 @@ def parse_solution_matrix(stdout):
         if len(w) != num_periods:
             return None
 
-    # Convert week-major → period-major (same structure as before)
+    # Convert week-major to period-major structure
     matrix = []
 
     for p in range(num_periods):
