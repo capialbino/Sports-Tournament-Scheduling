@@ -253,7 +253,7 @@ For `opt_baseline.mzn` CP with `gecode` and `chuffed` solver (N=8):
 
 - **CP**: MiniZinc with Gecode, Chuffed, and OR-Tools CP-SAT
 - **SAT**: Z3 solver and OR-Tools CP-SAT
-- **MIP**: CBC (COIN-OR Branch and Cut) MILP solver
+- **MIP**: CBC (COIN-OR Branch and Cut) MILP solver and HiGHS 
 
 All solvers are free and open-source, ensuring full reproducibility.
 
