@@ -22,7 +22,7 @@ def main():
                         "source/MIP/run.py",
                         "--N", str(n),
                         "--outdir", outdir,
-                        "-t", str(timeout),
+                        "--timeout", str(timeout),
                         "--solver", solver
                     ],
                     check=True
