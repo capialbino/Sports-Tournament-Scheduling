@@ -32,7 +32,7 @@ You will be placed in the `/cdmo` directory, which is the working directory for 
 │   ├── CP/          # Constraint Programming models (.mzn files)
 │   │   ├── run.py
 │   │   └── run_all.py
-│   ├── SAT/         # SAT/SMT models (Z3)
+│   ├── SAT/         # SAT models
 │   │   ├── solve.py
 │   │   ├── run.py
 │   │   └── run_all.py
@@ -73,7 +73,7 @@ python source/CP/run.py --model source/CP/opt_baseline.mzn --solver gecode --N 8
 #### Run all CP models in a directory:
 
 ```bash
-python source/CP/run.py --dir source/CP --N <num_teams> [--timeout <seconds>] [--outdir <output_dir>]
+python source/CP/run.py --dir source/CP --N <num_teams> [--timeout <seconds>] [--outdir <output_dir>] [--no-skip-non-solvable]
 ```
 
 **Parameters:**
@@ -93,7 +93,7 @@ python source/CP/run.py --dir source/CP --N 10 --timeout 300 --outdir res/CP
 #### Run the SAT solver:
 
 ```bash
-python source/SAT/run.py --N <num_teams> --mode <mode> --solver <solver> [--timeout <seconds>] [--outdir <output_dir>]
+python source/SAT/run.py --N <num_teams> --mode <mode> --solver <solver> [--timeout <seconds>] [--outdir <output_dir>] [--no-skip-non-solvable]
 ```
 
 **Parameters:**
@@ -107,6 +107,7 @@ python source/SAT/run.py --N <num_teams> --mode <mode> --solver <solver> [--time
   - `both`: Run both satisfaction and optimization
 - `--timeout`: Time limit in seconds (default: 300)
 - `--outdir`: Output directory (default: `res`)
+- `--no-skip-non-solvable`: Disable optimization that skips model-solver pairs that failed at N-2
 
 **Examples:**
 ```bash
@@ -129,7 +130,7 @@ python source/MIP/run.py --N <num_teams> --solver <solver> [--timeout <seconds>]
   - `highs`: HiGHS solver
 - `--timeout`: Time limit in seconds (default: 300)
 - `--outdir`: Output directory for results (default: `res`)
-- `--no-skip-non-solvable`: Don't skip instances known to be non-solvable (optional)
+- `--no-skip-non-solvable`: Disable optimization that skips model-solver pairs that failed at N-2
 
 **Example:**
 ```bash
@@ -173,15 +174,15 @@ This executes:
 
 ### Run All MIP Models
 
-Runs MIP solver for N = 6, 8, 10, ..., 16:
+Runs MIP solver for N = 6, 8, 10, ..., 22:
 
 ```bash
 python source/MIP/run_all.py
 ```
 
 This executes:
-- The CBC MILP solver
-- For even values of N from 6 to 16
+- Both CBC MILP and HiGHS solvers
+- For even values of N from 6 to 22
 - Results saved to `res/MIP/`
 - Timeout: 300 seconds per instance
 
@@ -266,4 +267,3 @@ All solvers are free and open-source, ensuring full reproducibility.
 - The CP solver includes an optimization to skip model-solver pairs that had no solution at N-2 (can be disabled with `--no-skip-non-solvable`)
 - Runtime is measured as the floor of actual execution time
 - If a solution is non-optimal (objective > N or no solution found), runtime is set to the timeout value
-- For SAT, optimization mode is only run for smaller instances (N ≤ 10) due to computational complexity
