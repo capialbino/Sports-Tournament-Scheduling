@@ -150,7 +150,7 @@ def format_json(
     solution = extracted_solution['solution']
     home_first = extracted_solution.get('home_first', {})
 
-    # Build the solution matrix: (n/2) × (n-1) where each entry is [home, away]
+    # Build the solution matrix: (n/2) x (n-1) where each entry is [home, away]
     sol_matrix = []
 
     for p in P:

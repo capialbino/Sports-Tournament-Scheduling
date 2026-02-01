@@ -118,30 +118,38 @@ def encode_exact_count(solver, indicators, count_vars, max_count, name):
     """Encode that exactly count_vars[k] is true iff exactly k indicators are true."""
 
     if is_ortools_backend(solver):
-        # OR-Tools version
+        # OR-Tools version: uses native sum constraints
         for k in range(max_count + 1):
             if k > len(indicators):
+                # Impossible: can't have more true than total indicators
                 solver.model.Add(count_vars[k] == 0)
             else:
+                # Bidirectional: count_vars[k] <=> (sum == k)
                 solver.model.Add(sum(indicators) == k).OnlyEnforceIf(count_vars[k])
                 solver.model.Add(sum(indicators) != k).OnlyEnforceIf(count_vars[k].Not())
     else:
-        # Z3 version
+        # Z3 version: manual encoding with 4 cases
         for k in range(max_count + 1):
+            # Case 1: k > len(indicators) -> impossible count
             if k > len(indicators):
                 solver.add_constraint(Not(count_vars[k]))
+            # Case 2: k == 0 -> all indicators must be false
             elif k == 0:
                 solver.add_constraint(Implies(count_vars[0], And([Not(ind) for ind in indicators])))
                 if len(indicators) > 0:
                     solver.add_constraint(Implies(And([Not(ind) for ind in indicators]), count_vars[0]))
+            # Case 3: k == len(indicators) -> all indicators must be true
             elif k == len(indicators):
                 solver.add_constraint(Implies(count_vars[k], And(indicators)))
                 solver.add_constraint(Implies(And(indicators), count_vars[k]))
+            # Case 4: 0 < k < len(indicators) -> exactly k true
             else:
+                # "At least k true" encoded as "at most (n-k) false"
                 at_least_k = at_most_k_seq_z3([Not(ind) for ind in indicators],
                                               len(indicators) - k, f'{name}_atleast_{k}')
+                # "At most k true"
                 at_most_k_cond = at_most_k_seq_z3(indicators, k, f'{name}_atmost_{k}')
-
+                # Bidirectional: count_vars[k] <=> (at_least_k ∧ at_most_k)
                 solver.add_constraint(Implies(count_vars[k], And(at_least_k, at_most_k_cond)))
                 solver.add_constraint(Implies(And(at_least_k, at_most_k_cond), count_vars[k]))
 

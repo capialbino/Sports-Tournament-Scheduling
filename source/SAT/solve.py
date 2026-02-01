@@ -29,7 +29,7 @@ def add_core_constraints(solver, N, T, S, W, P, M, match_pairs, matches_idx_vars
                 indicators.append(matches_idx_vars[p, w][m])
         exactly_one(indicators, solver, f'alldiff_m_{m}')
 
-    # CONSTRAINT 3: Range constraint - week w uses matches [w*(N/2), (w+1)*(N/2))]
+    # CONSTRAINT 3: Range constraint - week w uses matches [w*(N/2), (w+1)*(N/2))
     for w in W:
         for p in P:
             low = w * (N // 2)
@@ -248,12 +248,6 @@ def optimize(N, backend='z3'):
 
     # Minimize total imbalance
     if isinstance(solver, ORToolsBackend):
-        # diff_vars[t] is already a correctly-channelled one-hot over [0..N-1]
-        # encoding |home_count[t] - away_count[t]|.
-        # The total imbalance is simply the sum of each team's diff value.
-        # For a one-hot variable, sum(d * diff_vars[t][d]) equals the active index,
-        # so summing that over all teams gives the total imbalance directly as a
-        # linear expression over booleans — no auxiliary one-hot or channelling needed.
         solver.minimize(sum(d * diff_vars[t][d] for t in T for d in range(N)))
 
         start_time = time.time()
